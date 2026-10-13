@@ -1,0 +1,89 @@
+
+========== grpc: start Inventory (no delay) and Order Service ==========
+Order Service PID: 32616
+
+========== grpc: successful order ==========
+$ curl -s -i -X POST http://localhost:9080/orders -H 'Content-Type: application/json' -d '{"item_id":"apple","quantity":3}'
+HTTP/1.1 201 CREATED
+Server: Werkzeug/3.1.9 Python/3.12.3
+Date: Tue, 13 Oct 2026 02:13:13 GMT
+Content-Type: application/json
+Content-Length: 200
+Connection: close
+
+{"inventory":{"available":true,"available_quantity":10,"item_id":"apple","requested_quantity":3},"item_id":"apple","order_id":"aff980a7-66f2-4375-8bbc-ef338ad20287","quantity":3,"status":"CONFIRMED"}
+
+
+========== grpc: direct CheckInventory call ==========
+$ python grpc-version/client.py apple 3
+-> InventoryService/CheckInventory @ localhost:50051 (deadline=2.0s)
+item_id: "apple"
+quantity: 3
+<- OK
+item_id: "apple"
+requested_quantity: 3
+available_quantity: 10
+available: true
+
+
+========== grpc: restart Inventory with 5s delay ==========
+Inventory restarted with INVENTORY_DELAY_SECONDS=5
+
+========== grpc: order while Inventory is slow ==========
+$ curl -s -i -X POST http://localhost:9080/orders -H 'Content-Type: application/json' -d '{"item_id":"apple","quantity":1}'
+HTTP/1.1 504 GATEWAY TIMEOUT
+Server: Werkzeug/3.1.9 Python/3.12.3
+Date: Tue, 13 Oct 2026 02:13:16 GMT
+Content-Type: application/json
+Content-Length: 123
+Connection: close
+
+{"deadline_seconds":2.0,"error":"inventory service exceeded deadline","grpc_status":"DEADLINE_EXCEEDED","status":"FAILED"}
+
+elapsed: 2.06s
+
+========== grpc: Order Service still running after failure ==========
+Order Service PID 32616 is still alive
+$ curl -s -i http://localhost:9080/health
+HTTP/1.1 200 OK
+Server: Werkzeug/3.1.9 Python/3.12.3
+Date: Tue, 13 Oct 2026 02:13:16 GMT
+Content-Type: application/json
+Content-Length: 47
+Connection: close
+
+{"service":"order-service-grpc","status":"ok"}
+
+
+========== grpc: Inventory back to normal, same Order Service process ==========
+$ curl -s -i -X POST http://localhost:9080/orders -H 'Content-Type: application/json' -d '{"item_id":"banana","quantity":2}'
+HTTP/1.1 201 CREATED
+Server: Werkzeug/3.1.9 Python/3.12.3
+Date: Tue, 13 Oct 2026 02:13:23 GMT
+Content-Type: application/json
+Content-Length: 201
+Connection: close
+
+{"inventory":{"available":true,"available_quantity":5,"item_id":"banana","requested_quantity":2},"item_id":"banana","order_id":"f9ca94de-4350-415d-b67e-bdff63dba37f","quantity":2,"status":"CONFIRMED"}
+
+Order Service PID 32616 alive: yes
+
+========== grpc: Order Service log ==========
+2026-10-12 19:13:11,690 [order-service-grpc] INFO starting on port 9080 (inventory=localhost:50051, deadline=2.0s)
+ * Serving Flask app 'app'
+ * Debug mode: off
+2026-10-12 19:13:13,055 [order-service-grpc] INFO method=POST path=/orders status=201 latency_ms=6.5
+2026-10-12 19:13:16,738 [order-service-grpc] ERROR CheckInventory failed: grpc_status=DEADLINE_EXCEEDED details='Deadline Exceeded' (item_id=apple, deadline=2.0s)
+2026-10-12 19:13:16,739 [order-service-grpc] INFO method=POST path=/orders status=504 latency_ms=2005.2
+2026-10-12 19:13:16,802 [order-service-grpc] INFO method=GET path=/health status=200 latency_ms=0.0
+2026-10-12 19:13:23,369 [order-service-grpc] INFO method=POST path=/orders status=201 latency_ms=4.3
+
+========== grpc: Inventory Service log ==========
+2026-10-12 19:13:10,147 [inventory-service-grpc] INFO starting on port 50051 (delay=0.0s)
+2026-10-12 19:13:13,054 [inventory-service-grpc] INFO rpc=CheckInventory item_id=apple quantity=3 status=OK latency_ms=0.0
+2026-10-12 19:13:13,147 [inventory-service-grpc] INFO rpc=CheckInventory item_id=apple quantity=3 status=OK latency_ms=0.0
+2026-10-12 19:13:13,225 [inventory-service-grpc] INFO starting on port 50051 (delay=5.0s)
+2026-10-12 19:13:14,736 [inventory-service-grpc] WARNING simulating slow response: sleeping 5.0s
+2026-10-12 19:13:19,741 [inventory-service-grpc] INFO rpc=CheckInventory item_id=apple quantity=1 status=OK latency_ms=5005.4
+2026-10-12 19:13:21,929 [inventory-service-grpc] INFO starting on port 50051 (delay=0.0s)
+2026-10-12 19:13:23,368 [inventory-service-grpc] INFO rpc=CheckInventory item_id=banana quantity=2 status=OK latency_ms=0.0

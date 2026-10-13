@@ -1,0 +1,82 @@
+
+========== rest: start Inventory (no delay) and Order Service ==========
+Order Service PID: 32583
+
+========== rest: successful order ==========
+$ curl -s -i -X POST http://localhost:8080/orders -H 'Content-Type: application/json' -d '{"item_id":"apple","quantity":3}'
+HTTP/1.1 201 CREATED
+Server: Werkzeug/3.1.9 Python/3.12.3
+Date: Tue, 13 Oct 2026 02:12:59 GMT
+Content-Type: application/json
+Content-Length: 200
+Connection: close
+
+{"inventory":{"available":true,"available_quantity":10,"item_id":"apple","requested_quantity":3},"item_id":"apple","order_id":"b192424f-1a0e-45bc-8cb9-c8244b342095","quantity":3,"status":"CONFIRMED"}
+
+
+========== rest: restart Inventory with 5s delay ==========
+Inventory restarted with INVENTORY_DELAY_SECONDS=5
+
+========== rest: order while Inventory is slow ==========
+$ curl -s -i -X POST http://localhost:8080/orders -H 'Content-Type: application/json' -d '{"item_id":"apple","quantity":1}'
+HTTP/1.1 504 GATEWAY TIMEOUT
+Server: Werkzeug/3.1.9 Python/3.12.3
+Date: Tue, 13 Oct 2026 02:13:03 GMT
+Content-Type: application/json
+Content-Length: 62
+Connection: close
+
+{"error":"inventory service timed out","timeout_seconds":2.0}
+
+elapsed: 2.12s
+
+========== rest: Order Service still running after failure ==========
+Order Service PID 32583 is still alive
+$ curl -s -i http://localhost:8080/health
+HTTP/1.1 200 OK
+Server: Werkzeug/3.1.9 Python/3.12.3
+Date: Tue, 13 Oct 2026 02:13:03 GMT
+Content-Type: application/json
+Content-Length: 47
+Connection: close
+
+{"service":"order-service-rest","status":"ok"}
+
+
+========== rest: Inventory back to normal, same Order Service process ==========
+$ curl -s -i -X POST http://localhost:8080/orders -H 'Content-Type: application/json' -d '{"item_id":"banana","quantity":2}'
+HTTP/1.1 201 CREATED
+Server: Werkzeug/3.1.9 Python/3.12.3
+Date: Tue, 13 Oct 2026 02:13:09 GMT
+Content-Type: application/json
+Content-Length: 201
+Connection: close
+
+{"inventory":{"available":true,"available_quantity":5,"item_id":"banana","requested_quantity":2},"item_id":"banana","order_id":"9819234d-40f9-4a12-9a16-9d90db7b630e","quantity":2,"status":"CONFIRMED"}
+
+Order Service PID 32583 alive: yes
+
+========== rest: Order Service log ==========
+2026-10-12 19:12:58,395 [order-service-rest] INFO starting on port 8080 (inventory=http://localhost:8081, timeout=2.0s)
+ * Serving Flask app 'app'
+ * Debug mode: off
+2026-10-12 19:12:59,739 [order-service-rest] INFO method=POST path=/orders status=201 latency_ms=12.3
+2026-10-12 19:13:03,315 [order-service-rest] ERROR inventory call timed out after 2.0s (item_id=apple)
+2026-10-12 19:13:03,316 [order-service-rest] INFO method=POST path=/orders status=504 latency_ms=2005.1
+2026-10-12 19:13:03,425 [order-service-rest] INFO method=GET path=/health status=200 latency_ms=0.0
+2026-10-12 19:13:09,988 [order-service-rest] INFO method=POST path=/orders status=201 latency_ms=12.4
+
+========== rest: Inventory Service log ==========
+2026-10-12 19:12:57,243 [inventory-service-rest] INFO starting on port 8081 (delay=0.0s)
+ * Serving Flask app 'app'
+ * Debug mode: off
+2026-10-12 19:12:59,737 [inventory-service-rest] INFO method=POST path=/inventory/check status=200 latency_ms=0.3
+2026-10-12 19:12:59,853 [inventory-service-rest] INFO starting on port 8081 (delay=5.0s)
+ * Serving Flask app 'app'
+ * Debug mode: off
+2026-10-12 19:13:01,313 [inventory-service-rest] WARNING simulating slow response: sleeping 5.0s
+2026-10-12 19:13:06,321 [inventory-service-rest] INFO method=POST path=/inventory/check status=200 latency_ms=5007.4
+2026-10-12 19:13:08,577 [inventory-service-rest] INFO starting on port 8081 (delay=0.0s)
+ * Serving Flask app 'app'
+ * Debug mode: off
+2026-10-12 19:13:09,987 [inventory-service-rest] INFO method=POST path=/inventory/check status=200 latency_ms=0.2
