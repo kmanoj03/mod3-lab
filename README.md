@@ -71,3 +71,52 @@ Configuration (environment variables):
 `POST /orders` (Order Service) returns `201 Created` on success, passes through `400`/`404`/`409`
 from Inventory, and returns `504 Gateway Timeout` if Inventory exceeds the timeout or
 `503 Service Unavailable` if Inventory is unreachable.
+
+## Running the gRPC version
+
+The contract lives in [`grpc-version/proto/inventory.proto`](grpc-version/proto/inventory.proto).
+Generated stubs are committed in `grpc-version/generated/`; regenerate them after editing the
+proto with:
+
+```bash
+./grpc-version/generate.sh
+```
+
+Run each service in its own terminal (with the venv activated) from the repo root:
+
+```bash
+# Terminal 1 – Inventory Service (gRPC, port 50051)
+python grpc-version/inventory_service/server.py
+
+# Terminal 2 – Order Service (HTTP on port 9080, calls Inventory over gRPC)
+python grpc-version/order_service/app.py
+
+# Terminal 3 – place an order
+curl -i -X POST localhost:9080/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"item_id":"apple","quantity":3}'
+
+# Or call the Inventory gRPC service directly
+python grpc-version/client.py apple 3
+```
+
+Configuration (environment variables):
+
+| Variable | Service | Default | Purpose |
+|----------|---------|---------|---------|
+| `INVENTORY_ADDR` | Order | `localhost:50051` | Inventory gRPC address |
+| `INVENTORY_DEADLINE_SECONDS` | Order | `2.0` | gRPC deadline on the Order → Inventory call |
+| `INVENTORY_DELAY_SECONDS` | Inventory | `0` | Artificial delay to simulate a slow Inventory |
+
+### gRPC contract
+
+`InventoryService.CheckInventory(CheckInventoryRequest) returns (CheckInventoryResponse)`:
+
+| gRPC status | Meaning | Order Service HTTP status |
+|-------------|---------|---------------------------|
+| `OK` | Item exists and quantity is available | `201 Created` |
+| `INVALID_ARGUMENT` | Empty `item_id` or `quantity <= 0` | `400 Bad Request` |
+| `NOT_FOUND` | Unknown `item_id` | `404 Not Found` |
+| `FAILED_PRECONDITION` | Item exists but not enough stock | `409 Conflict` |
+| `DEADLINE_EXCEEDED` | Inventory did not answer within the deadline | `504 Gateway Timeout` |
+| `UNAVAILABLE` | Inventory unreachable | `503 Service Unavailable` |

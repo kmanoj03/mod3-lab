@@ -1,5 +1,5 @@
 flask>=3.0
 requests>=2.31
-grpcio>=1.62
-grpcio-tools>=1.62
-protobuf>=4.25
+grpcio>=1.84
+grpcio-tools>=1.84
+protobuf>=7.35.1
